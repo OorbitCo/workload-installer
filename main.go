@@ -13,6 +13,8 @@ import (
 var InstallerArgs struct {
 	Kubeconfig string `arg:"-k,--kubeconfig,required" help:"Path to the kubeconfig file to use for the Kubernetes cluster."`
 	SMBURI     string `arg:"-s,--smb-uri,required" help:"SMB URI to the shared drive.\nExample: smb://<username>:<password>@<ip-address>/<share-name>"`
+	CERT_PATH  string `arg:"-c,--cert-path,required" help:"Path to the certificate file to use for the Kubernetes cluster."`
+	KEY_PATH   string `arg:"-p,--key-path,required" help:"Path to the key file to use for the Kubernetes cluster."`
 }
 
 func setupLogs() {
@@ -30,6 +32,12 @@ func main() {
 	// check if file exists
 	if f, err := os.Stat(InstallerArgs.Kubeconfig); os.IsNotExist(err) || f.IsDir() {
 		log.Fatal("Kubeconfig file does not exist or is a directory")
+	}
+	if f, err := os.Stat(InstallerArgs.CERT_PATH); os.IsNotExist(err) || f.IsDir() {
+		log.Fatal("Certificate file does not exist or is a directory")
+	}
+	if f, err := os.Stat(InstallerArgs.KEY_PATH); os.IsNotExist(err) || f.IsDir() {
+		log.Fatal("Key file does not exist or is a directory")
 	}
 	config, err := clientcmd.BuildConfigFromFlags("", InstallerArgs.Kubeconfig)
 	if err != nil {
@@ -56,8 +64,8 @@ func main() {
 	}
 	validateURI(uri)
 	pw, _ := uri.User.Password()
-	startProcess("kubectl.exe", "delete", "secret", "smb-creds")
-	startProcess("kubectl.exe", "create", "secret", "generic", "smb-creds", "--from-literal", "username="+uri.User.Username(), "--from-literal", "password="+pw)
+	startProcess("kubectl.exe", "delete", "secret", "smbcreds")
+	startProcess("kubectl.exe", "create", "secret", "generic", "smbcreds", "--from-literal", "username="+uri.User.Username(), "--from-literal", "password="+pw)
 	templateBytes, err := os.ReadFile("configs/03-csi-pv/01-create-pv.yaml")
 	if err != nil {
 		log.Fatal("Error reading file: %s", err.Error())
@@ -73,7 +81,9 @@ func main() {
 	_, err = tmpFile.WriteString(yamlString)
 	startProcess("kubectl.exe", "apply", "-f", tmpFile.Name())
 	startProcess("kubectl.exe", "apply", "-f", "configs/04-gpu")
-
+	// create TLS secret
+	startProcess("kubectl.exe", "delete", "secret", "tls-secret")
+	startProcess("kubectl.exe", "create", "secret", "tls", "tls-secret", "--cert="+InstallerArgs.CERT_PATH, "--key="+InstallerArgs.KEY_PATH)
 }
 
 func validateURI(uri *url.URL) {
