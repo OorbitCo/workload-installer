@@ -1,0 +1,44 @@
+#  Copyright 2024 Oorbit Inc. All rights reserved.
+#  This source code is a part of the Oorbit Infrastructure.
+#  Any Unauthorized use is prohibited.
+
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  annotations:
+    pv.kubernetes.io/provisioned-by: smb.csi.k8s.io
+  name: pv-smb
+spec:
+  capacity:
+    storage: 1024Gi
+  accessModes:
+    - ReadOnlyMany
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: smb
+  mountOptions:
+    - dir_mode=0777
+    - file_mode=0777
+  csi:
+    driver: smb.csi.k8s.io
+    readOnly: false
+    # volumeHandle format: {smb-server-address}#{sub-dir-name}#{share-name}
+    # make sure this value is unique for every share in the cluster
+    volumeHandle: %IP%%PATH%##
+    volumeAttributes:
+      source: "//%IP%%PATH%"
+    nodeStageSecretRef:
+      name: smbcreds
+      namespace: default
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: pvc-smb
+  namespace: games
+spec:
+  accessModes:
+    - ReadOnlyMany
+  resources:
+    requests:
+      storage: 1024Gi
+  storageClassName: smb

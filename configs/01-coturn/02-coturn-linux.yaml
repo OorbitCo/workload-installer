@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations: {}
+  labels:
+    app: coturn
+  name: coturn-linux
+  namespace: coturn
+spec:
+  selector:
+    matchLabels:
+      app: coturn
+      os: linux
+  template:
+    metadata:
+      labels:
+        app: coturn
+        os: linux
+    spec:
+      containers:
+      - args:
+        - -v
+        - --no-cli
+        - --log-file=stdout
+        - --external-ip=$(detect-external-ip)
+        - --user=User:Password
+        - --lt-cred-mech
+        - --realm=Oorbit
+        image: coturn/coturn
+        imagePullPolicy: Always
+        name: coturn
+        ports:
+        - containerPort: 3478
+          hostPort: 3478
+          name: turn-udp
+          protocol: UDP
+        - containerPort: 3478
+          hostPort: 3478
+          name: turn-tcp
+          protocol: TCP
+      hostNetwork: true
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/os: linux
+        workload: gpu
+      tolerations:
+      - effect: NoSchedule
+        key: workload
+        operator: Equal
+        value: gpu
+      - effect: NoExecute
+        key: workload
+        operator: Equal
+        value: gpu
+      - effect: NoSchedule
+        key: workload
+        operator: Equal
+        value: gpu
+      - effect: NoExecute
+        key: workload
+        operator: Equal
+        value: gpu

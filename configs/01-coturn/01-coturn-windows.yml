@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  annotations: {}
+  labels:
+    app: coturn
+  name: coturn-windows
+  namespace: coturn
+spec:
+  selector:
+    matchLabels:
+      app: coturn
+      os: windows
+  template:
+    metadata:
+      labels:
+        app: coturn
+        os: windows
+    spec:
+      containers:
+        - args:
+            - -v
+            - --no-cli
+            - --log-file=stdout
+            - --external-ip=$(detect-external-ip.exe)
+            - --user=User:Password
+            - --lt-cred-mech
+            - --realm=player.oorbitinfra.com
+          command:
+            - turnserver.exe
+          image: ghcr.io/oorbitco/coturn-windows:latest
+          imagePullPolicy: Always
+          name: coturn
+          ports:
+            - containerPort: 3478
+              hostPort: 3478
+              name: turn-udp
+              protocol: UDP
+            - containerPort: 3478
+              hostPort: 3478
+              name: turn-tcp
+              protocol: TCP
+      hostNetwork: true
+      initContainers:
+        - command:
+            - powershell
+            - -c
+            - New-NetFirewallRule -DisplayName "ALLOW TCP PORT 3478" -Direction inbound
+              -Profile Any -Action Allow -LocalPort 3478 -Protocol TCP;  New-NetFirewallRule
+              -DisplayName "ALLOW UDP PORT 3478" -Direction inbound -Profile Any -Action
+              Allow -LocalPort 3478 -Protocol UDP
+          image: 455260402660.dkr.ecr.us-west-2.amazonaws.com/coturn:windows
+          imagePullPolicy: Always
+          name: firewall
+      nodeSelector:
+        kubernetes.io/arch: amd64
+        kubernetes.io/os: windows
+        workload: gpu
+      securityContext:
+        windowsOptions:
+          hostProcess: true
+          runAsUserName: NT AUTHORITY\SYSTEM
+      tolerations:
+        - effect: NoSchedule
+          key: workload
+          operator: Equal
+          value: gpu
+        - effect: NoExecute
+          key: workload
+          operator: Equal
+          value: gpu
