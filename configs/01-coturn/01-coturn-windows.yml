@@ -27,8 +27,8 @@ spec:
             - --lt-cred-mech
             - --realm=player.oorbitinfra.com
           command:
-            - turnserver.exe
-          image: ghcr.io/oorbitco/coturn-windows:latest
+            - C:\hpc\coturn\bin\turnserver.exe
+          image: ghcr.io/oorbitco/coturn-windows-core:latest
           imagePullPolicy: Always
           name: coturn
           ports:
@@ -49,7 +49,7 @@ spec:
               -Profile Any -Action Allow -LocalPort 3478 -Protocol TCP;  New-NetFirewallRule
               -DisplayName "ALLOW UDP PORT 3478" -Direction inbound -Profile Any -Action
               Allow -LocalPort 3478 -Protocol UDP
-          image: 455260402660.dkr.ecr.us-west-2.amazonaws.com/coturn:windows
+          image: ghcr.io/oorbitco/coturn-windows-core:latest
           imagePullPolicy: Always
           name: firewall
       nodeSelector:

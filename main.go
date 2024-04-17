@@ -1,8 +1,11 @@
 package main
 
 import (
+	"context"
 	"github.com/alexflint/go-arg"
 	"github.com/seculize/islazy/log"
+	"gopkg.in/yaml.v2"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 	"net/url"
@@ -55,6 +58,8 @@ func main() {
 	}
 	log.Info("Kubernetes version: %s", version.Major+"."+version.Minor)
 	getKubeVersion()
+	// get aws-auth configmap
+	patchRoles(clientset)
 	startProcess("kubectl.exe", "apply", "-f", "configs/00-aws")
 	startProcess("kubectl.exe", "apply", "-f", "configs/01-coturn")
 	startProcess("kubectl.exe", "apply", "-f", "configs/02-csi-driver")
@@ -82,10 +87,9 @@ func main() {
 	startProcess("kubectl.exe", "apply", "-f", tmpFile.Name())
 	startProcess("kubectl.exe", "apply", "-f", "configs/04-gpu")
 	// create TLS secret
-	startProcess("kubectl.exe", "delete", "secret", "tls-secret")
-	startProcess("kubectl.exe", "create", "secret", "tls", "tls-secret", "--cert="+InstallerArgs.CERT_PATH, "--key="+InstallerArgs.KEY_PATH)
+	startProcess("kubectl.exe", "delete", "-n", "games", "secret", "tls-secret")
+	startProcess("kubectl.exe", "create", "-n", "games", "secret", "tls", "tls-secret", "--cert="+InstallerArgs.CERT_PATH, "--key="+InstallerArgs.KEY_PATH)
 }
-
 func validateURI(uri *url.URL) {
 	if uri.Scheme != "smb" {
 		log.Fatal("Invalid SMB URI: scheme must be 'smb'")
@@ -104,5 +108,47 @@ func validateURI(uri *url.URL) {
 	}
 	if _, err := uri.User.Password(); err != true {
 		log.Fatal("Invalid SMB URI: password is empty")
+	}
+}
+func patchRoles(clientset *kubernetes.Clientset) {
+	configMap, err := clientset.CoreV1().ConfigMaps("kube-system").Get(context.TODO(), "aws-auth", metav1.GetOptions{})
+	if err != nil {
+		log.Error("Unable to get aws-auth configmap: %s", err.Error())
+	} else {
+		roles := configMap.Data["mapRoles"]
+		// parse yaml and check if role exists
+		var parsed []map[string]interface{}
+		err := yaml.Unmarshal([]byte(roles), &parsed)
+		if err != nil {
+			log.Error("Error parsing aws-auth configmap: %s", err.Error())
+		} else {
+			var found = false
+			clonedRoles := []map[string]interface{}{}
+			for _, role := range parsed {
+				if strings.Contains(role["rolearn"].(string), "WindowsWorker") {
+					if len(role["groups"].([]interface{})) == 2 {
+						found = true
+						continue
+					}
+				}
+				clonedRoles = append(clonedRoles, role)
+			}
+			if !found {
+				log.Info("Roles already patched.")
+				return
+			}
+			finalRoles, err := yaml.Marshal(clonedRoles)
+			if err != nil {
+				log.Error("Error marshalling yaml: %s", err.Error())
+			} else {
+				configMap.Data["mapRoles"] = string(finalRoles)
+				_, err = clientset.CoreV1().ConfigMaps("kube-system").Update(context.TODO(), configMap, metav1.UpdateOptions{})
+				if err != nil {
+					log.Error("Unable to update aws-auth configmap: %s", err.Error())
+				} else {
+					log.Info("Successfully updated aws-auth configmap")
+				}
+			}
+		}
 	}
 }
