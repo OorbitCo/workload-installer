@@ -14,10 +14,12 @@ import (
 )
 
 var InstallerArgs struct {
-	Kubeconfig string `arg:"-k,--kubeconfig,required" help:"Path to the kubeconfig file to use for the Kubernetes cluster."`
-	SMBURI     string `arg:"-s,--smb-uri,required" help:"SMB URI to the shared drive.\nExample: smb://<username>:<password>@<ip-address>/<share-name>"`
-	CERT_PATH  string `arg:"-c,--cert-path,required" help:"Path to the certificate file to use for the Kubernetes cluster."`
-	KEY_PATH   string `arg:"-p,--key-path,required" help:"Path to the key file to use for the Kubernetes cluster."`
+	Kubeconfig   string `arg:"-k,--kubeconfig,required" help:"Path to the kubeconfig file to use for the Kubernetes cluster."`
+	SMBURI       string `arg:"-s,--smb-uri,required" help:"SMB URI to the shared drive.\nExample: smb://<username>:<password>@<ip-address>/<share-name>"`
+	CERT_PATH    string `arg:"-c,--cert-path,required" help:"Path to the certificate file to use for the Kubernetes cluster."`
+	KEY_PATH     string `arg:"-p,--key-path,required" help:"Path to the key file to use for the Kubernetes cluster."`
+	RABBITMQ_URI string `arg:"-r,--rabbitmq-uri,required" help:"RabbitMQ URI to use for the Kubernetes cluster."`
+	REGION       string `arg:"-g,--region,required" help:"Region to use for the Kubernetes cluster."`
 }
 
 func setupLogs() {
@@ -89,6 +91,20 @@ func main() {
 	// create TLS secret
 	startProcess("kubectl.exe", "delete", "-n", "games", "secret", "tls-secret")
 	startProcess("kubectl.exe", "create", "-n", "games", "secret", "tls", "tls-secret", "--cert="+InstallerArgs.CERT_PATH, "--key="+InstallerArgs.KEY_PATH)
+	templateBytes, err = os.ReadFile("configs/05-mims/01-mims.yaml")
+	if err != nil {
+		log.Fatal("Error reading file: %s", err.Error())
+	}
+	yamlString = string(templateBytes)
+	yamlString = strings.ReplaceAll(yamlString, "%RABBITMQ_URI%", InstallerArgs.RABBITMQ_URI)
+	yamlString = strings.ReplaceAll(yamlString, "%REGION%", InstallerArgs.REGION)
+	tmpFile2, err := os.CreateTemp("", "01-mims.yaml")
+	if err != nil {
+		log.Fatal("Error creating temporary file: %s", err.Error())
+	}
+	defer os.Remove(tmpFile2.Name())
+	_, err = tmpFile2.WriteString(yamlString)
+	startProcess("kubectl.exe", "apply", "-f", tmpFile2.Name())
 }
 func validateURI(uri *url.URL) {
 	if uri.Scheme != "smb" {

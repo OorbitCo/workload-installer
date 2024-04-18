@@ -1,0 +1,25 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mini-ims
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mini-ims
+  template:
+    metadata:
+      labels:
+        app: mini-ims
+    spec:
+      serviceAccountName: ims-service-account
+      containers:
+        - name: mini-ims
+          image: ghcr.io/oorbitco/mims:latest
+          imagePullPolicy: Always
+          env:
+            - name: RABBITMQ_URI
+              value: %RABBITMQ_URI%
+            - name: REGIONAL_QUEUE
+              value: %REGION%
+
