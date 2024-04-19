@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"github.com/alexflint/go-arg"
+	amqp "github.com/rabbitmq/amqp091-go"
 	"github.com/seculize/islazy/log"
 	"gopkg.in/yaml.v2"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -48,6 +49,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
+	setupRabbitMQ(InstallerArgs.RABBITMQ_URI)
+	return
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Fatal(err.Error())
@@ -105,6 +108,67 @@ func main() {
 	defer os.Remove(tmpFile2.Name())
 	_, err = tmpFile2.WriteString(yamlString)
 	startProcess("kubectl.exe", "apply", "-f", tmpFile2.Name())
+	setupRabbitMQ(InstallerArgs.RABBITMQ_URI)
+}
+func setupRabbitMQ(uri string) {
+	conn, err := amqp.Dial(uri)
+	if err != nil {
+		log.Fatal("Error connecting to RabbitMQ: %s", err.Error())
+	}
+	defer conn.Close()
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatal("Error opening channel: %s", err.Error())
+	}
+	defer ch.Close()
+	type Exchange struct {
+		Name    string
+		Kind    string
+		Durable bool
+	}
+	exchanges := []Exchange{
+		{
+			Name:    "create.pod",
+			Kind:    "topic",
+			Durable: false,
+		},
+		{
+			Name:    "cluster.reports",
+			Kind:    "fanout",
+			Durable: false,
+		},
+		{
+			Name:    "on.cluster.changed",
+			Kind:    "fanout",
+			Durable: false,
+		},
+		{
+			Name:    "on.pod.ready",
+			Kind:    "fanout",
+			Durable: false,
+		},
+	}
+	for _, e := range exchanges {
+		log.Info("Declaring exchange: %s", e.Name)
+		err = ch.ExchangeDeclare(e.Name, e.Kind, e.Durable, false, false, false, nil)
+		if err != nil {
+			log.Warning("Error declaring exchange: %s", err.Error())
+		}
+	}
+	queues := map[string]string{
+		"on.pod.created": "on.pod.ready",
+	}
+	for queue, exchange := range queues {
+		_, err = ch.QueueDeclare(queue, false, false, false, false, nil)
+		if err != nil {
+			log.Warning("Error declaring queue: %s", err.Error())
+		}
+		err = ch.QueueBind(queue, queue, exchange, false, nil)
+		if err != nil {
+			log.Warning("Error binding queue: %s", err.Error())
+		}
+	}
+	log.Info("RabbitMQ setup completed")
 }
 func validateURI(uri *url.URL) {
 	if uri.Scheme != "smb" {
